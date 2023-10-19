@@ -796,3 +796,91 @@ foo(_)    // expandiendo la funcion `(a) => foo(a)`
 foo(_, b) // expandiendo la funcion`(a) => foo(a, b)`
 _(foo)    // expandiendo la funcion`(a) => a(foo)`
 ```
+
+## Cats
+
+### Type Class
+
+Una type class es una interfaz que especifica algún comportamiento que queremos que un tipo de datos en particular tenga. El tipo de datos no es parte de la type class, pero en su lugar se define en otro lugar. Esto es diferente de una clase en un lenguaje orientado a objetos, donde la clase y la interfaz son lo mismo. En Cats, una clase de tipo está representada por un rasgo con al menos un parámetro de tipo
+
+```scala
+trait JsonWriter[A] {
+  def write(value: A): Json
+}
+```
+
+JsonWriter es nuestra clase de tipo en este ejemplo, con Json y sus subtipos proporcionando código de soporte.
+
+### Type Class Instances
+
+Una instancia de clase de tipo es una implementación de los métodos de una clase de tipo para un tipo de datos específico. En Cats, las instancias de clase de tipo se representan con objetos singleton.En Scala definimos instancias creando implementaciones concretas de la clase de tipo y etiquetándolas con la palabra clave implícita, Por ejemplo, podríamos definir una instancia de clase de tipo para nuestro tipo de datos Person como:
+
+```scala
+final case class Person(name: String, email: String)
+
+object JsonWriterInstances {
+  implicit val stringWriter: JsonWriter[String] =
+    new JsonWriter[String] {
+      def write(value: String): Json =
+        JsString(value)
+    }
+
+  implicit val personWriter: JsonWriter[Person] =
+    new JsonWriter[Person] {
+      def write(value: Person): Json =
+        JsObject(Map(
+          "name" -> JsString(value.name),
+          "email" -> JsString(value.email)
+        ))
+    }
+
+  // etc...
+}
+```
+
+### Type Class Interfaces
+
+Una interfaz de clase de tipo es cualquier funcionalidad que expone los métodos de una clase de tipo al usuario. En Cats, las interfaces de clase de tipo se representan con objetos singleton o clases estáticas que aceptan instancias de clase de tipo en sus métodos. Una interfaz de clase de tipo es cualquier funcionalidad que exponemos a los usuarios. Las interfaces son métodos genéricos que aceptan instancias de la clase de tipo como parámetros implícitos.
+
+#### Interface Objects
+
+La forma más sencilla de crear una interfaz es colocar métodos en un objeto singleton:
+
+```scala
+object Json {
+  def toJson[A](value: A)(implicit w: JsonWriter[A]): Json =
+    w.write(value)
+}
+```
+
+Para utilizar este objeto, importamos cualquier instancia de clase de tipo que nos interese y llamamos al método correspondiente:
+
+```scala
+import JsonWriterInstances._
+
+Json.toJson(Person("Dave", "dave@example.com"))
+// res4: Json = JsObject(Map(name -> JsString(Dave), email -> JsString(dave@example.com)))
+```
+
+#### Interface Syntax
+
+También podemos utilizar métodos de extensión para ampliar los tipos existentes con métodos de interfaz. Cats denomina a esto "sintaxis" de la clase de tipos:
+
+```scala
+object JsonSyntax {
+  implicit class JsonWriterOps[A](value: A) {
+    def toJson(implicit w: JsonWriter[A]): Json =
+      w.write(value)
+  }
+}
+```
+
+Utilizamos la sintaxis de interfaz importándola junto con las instancias de los tipos que necesitamos:
+
+```scala
+import JsonWriterInstances._
+import JsonSyntax._
+
+Person("Dave", "dave@example.com").toJson
+// res6: Json = JsObject(Map(name -> JsString(Dave), email -> JsString(dave@example.com)))
+```
