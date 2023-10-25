@@ -622,3 +622,128 @@ tmp
 dist
 .cache
 ```
+
+## Sintaxis y características del archivo de configuración
+
+El archivo de configuración de una aplicación Play debe definirse en conf/aplication.conf. Utiliza el formato HOCON.
+
+Además del archivo application.conf, la configuración proviene de un par de lugares más.
+
+- La configuración por defecto se carga desde cualquier archivo reference.conf que se encuentre en el classpath. La mayoría de los JAR de Play incluyen un archivo reference.conf con la configuración predeterminada. Los ajustes en application.conf anularán los ajustes en los archivos reference.conf.
+- También es posible establecer la configuración mediante las propiedades del sistema. Las propiedades del sistema anulan la configuración de application.conf.
+
+La forma idiomática de utilizar Config es tener todas las claves de configuración definidas en algún lugar, ya sea en reference.conf o application.conf. Si la clave no tiene un valor predeterminado razonable, normalmente se establece en null para significar "sin valor".
+
+### Especificación de un archivo de configuración alternativo
+
+En tiempo de ejecución, el application.conf por defecto se carga desde el classpath. Las propiedades del sistema se pueden utilizar para forzar una fuente de configuración diferente:
+
+- config.resource especifica un nombre de recurso que incluye la extensión, es decir, application.conf y no sólo application
+- config.file especifica una ruta de sistema de archivos, de nuevo debe incluir la extensión, no ser un nombre base
+
+Estas propiedades del sistema especifican un reemplazo para application.conf, no una adición. Si aún desea utilizar algunos valores del archivo application.conf entonces puede incluir el application.conf en su otro archivo .conf escribiendo include "application" en la parte superior de ese archivo. Después de incluir la configuración de application.conf en su nuevo archivo .conf puede especificar cualquier configuración que desee anular.
+
+### Utilización desde el controlador
+
+La configuración puede estar disponible en tu controlador (o en tu componente), para utilizar la configuración por defecto o la personalizada, gracias a la Inyección de Dependencias (en Scala o en Java).
+
+```
+import javax.inject._
+import play.api.Configuration
+
+class MyController @Inject()(config: Configuration) {
+  // ...
+}
+```
+
+### Uso con Akka
+
+Akka utilizará el mismo archivo de configuración que el definido para tu aplicación Play. Esto significa que puedes configurar cualquier cosa en Akka en el archivo application.conf. En Play, Akka lee su configuración desde dentro de la configuración play.akka, no desde la configuración akka.
+
+### Utilización con la orden de ejecución
+
+Hay un par de cosas especiales que debes saber sobre la configuración cuando ejecutes tu aplicación con el comando run.
+
+#### Extra devSettings
+
+Puedes configurar opciones adicionales para el comando run en tu build.sbt. Estos ajustes no se utilizarán cuando despliegues tu aplicación.
+
+```bash
+PlayKeys.devSettings += "play.server.http.port" -> "8080"
+```
+
+#### Configuración del servidor HTTP en application.conf
+
+## La API de configuración de Scala
+
+Play usa la librería Typesafe config, pero Play también proporciona un bonito envoltorio Scala llamado Configuration con características Scala más avanzadas. Si no estás familiarizado con Typesafe config, puede que también quieras leer la documentación sobre sintaxis y características del archivo de configuración.
+
+### Acceso a la configuración
+
+Normalmente, obtendrás un objeto Configuration a través de la inyección de dependencias, o simplemente pasando una instancia de Configuration a tu componente:
+
+```scala
+class MyController @Inject()(config: Configuration, c: ControllerComponents) extends AbstractController(c) {
+  def getFoo = Action {
+    Ok(config.get[String]("foo"))
+  }
+}
+```
+
+El método get es el más común que utilizarás. Se utiliza para obtener un único valor en una ruta del fichero de configuración.
+
+```scala
+// foo = bar
+config.get[String]("foo")
+
+// bar = 8
+config.get[Int]("bar")
+
+// baz = true
+config.get[Boolean]("baz")
+
+// listOfFoos = ["bar", "baz"]
+config.get[Seq[String]]("listOfFoos")
+```
+
+Acepta un ConfigLoader implícito, pero para los tipos más comunes como String, Int, e incluso Seq[String], ya existen cargadores definidos que hacen lo que se espera.
+
+La configuración también soporta la validación contra un conjunto de valores válidos:
+
+```scala
+config.getAndValidate[String]("foo", Set("bar", "baz"))
+```
+
+### ConfigLoader
+
+Definiendo tu propio ConfigLoader, puedes convertir fácilmente la configuración en un tipo personalizado. Esto se utiliza ampliamente en Play internamente, y es una gran manera de traer más seguridad de tipo a su uso de la configuración. Por ejemplo:
+
+```scala
+case class AppConfig(title: String, baseUri: URI)
+object AppConfig {
+
+  implicit val configLoader: ConfigLoader[AppConfig] = new ConfigLoader[AppConfig] {
+    def load(rootConfig: Config, path: String): AppConfig = {
+      val config = rootConfig.getConfig(path)
+      AppConfig(
+        title = config.getString("title"),
+        baseUri = new URI(config.getString("baseUri"))
+      )
+    }
+  }
+}
+```
+
+A continuación, puede utilizar config.get como hicimos anteriormente:
+
+```scala
+// app.config = {
+//   title = "My App
+//   baseUri = "https://example.com/"
+// }
+config.get[AppConfig]("app.config")
+```
+
+### Teclas de configuración opcionales
+
+La Configuración de Play permite obtener claves de configuración opcionales mediante el método getOptional[A]. Funciona igual que get[A] pero devolverá None si la clave no existe. En lugar de utilizar este método, se recomienda establecer las claves opcionales en null en el archivo de configuración y utilizar get[Option[A]]. Pero proporcionamos este método por conveniencia en caso de que necesite interactuar con bibliotecas que utilizan la configuración de una manera no estándar.
