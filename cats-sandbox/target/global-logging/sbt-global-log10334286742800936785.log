@@ -1,0 +1,7 @@
+[debug] > Exec({file:/C:/Users/felip/PROGRAMACION/Scala%20Ceiba/cats-sandbox/}cats-sandbox/run, None, None)
+[debug] Evaluating tasks: Compile / run
+[debug] Running task... Cancel: Signal, check cycles: false, forcegc: true
+[success] Total time: 0 s, completed 20 oct. 2023 2:13:36 a. m.
+[debug] > Exec(idea-shell, None, None)
+[debug] > Exec(, None, None)
+[debug] > Exec(idea-shell, None, None)

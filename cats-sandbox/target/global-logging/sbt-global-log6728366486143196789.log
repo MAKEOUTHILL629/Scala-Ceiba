@@ -1,0 +1,11 @@
+[debug] > Exec({file:/C:/Users/felip/PROGRAMACION/Scala%20Ceiba/cats-sandbox/}cats-sandbox/compile, None, None)
+[debug] Evaluating tasks: Compile / compile
+[debug] Running task... Cancel: Signal, check cycles: false, forcegc: true
+[info] compiling 1 Scala source to C:\Users\felip\PROGRAMACION\Scala Ceiba\cats-sandbox\target\scala-2.13\classes ...
+[info] Non-compiled module 'compiler-bridge_2.13' for Scala 2.13.10. Compiling...
+[info]   Compilation completed in 4.63s.
+[info] done compiling
+[success] Total time: 6 s, completed 20 oct. 2023 2:13:17 a. m.
+[debug] > Exec(idea-shell, None, None)
+[debug] > Exec(, None, None)
+[debug] > Exec(idea-shell, None, None)

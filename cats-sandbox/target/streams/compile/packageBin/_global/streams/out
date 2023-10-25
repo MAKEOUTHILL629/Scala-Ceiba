@@ -1,0 +1,11 @@
+[debug] Packaging C:\Users\felip\PROGRAMACION\Scala Ceiba\cats-sandbox\target\scala-2.13\cats-sandbox_2.13-0.0.1-SNAPSHOT.jar ...
+[debug] Input file mappings:
+[debug] 	sandbox
+[debug] 	  C:\Users\felip\PROGRAMACION\Scala Ceiba\cats-sandbox\target\scala-2.13\classes\sandbox
+[debug] 	sandbox\Main$.class
+[debug] 	  C:\Users\felip\PROGRAMACION\Scala Ceiba\cats-sandbox\target\scala-2.13\classes\sandbox\Main$.class
+[debug] 	sandbox\Main$delayedInit$body.class
+[debug] 	  C:\Users\felip\PROGRAMACION\Scala Ceiba\cats-sandbox\target\scala-2.13\classes\sandbox\Main$delayedInit$body.class
+[debug] 	sandbox\Main.class
+[debug] 	  C:\Users\felip\PROGRAMACION\Scala Ceiba\cats-sandbox\target\scala-2.13\classes\sandbox\Main.class
+[debug] Done packaging.
