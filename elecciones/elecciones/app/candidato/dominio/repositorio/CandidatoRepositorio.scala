@@ -6,4 +6,6 @@ import scala.concurrent.Future
 
 trait CandidatoRepositorio {
   def all() : Future[Seq[Candidato]]
+
+
 }

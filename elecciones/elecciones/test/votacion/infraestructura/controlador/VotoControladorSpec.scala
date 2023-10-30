@@ -22,10 +22,11 @@ class VotoControladorSpec extends PlaySpec with GuiceOneAppPerTest with Injectin
           .withHeaders("Content-Type" -> "application/json")
           .withJsonBody(
             Json.parse(
-              s"""{
-                 |"cedula": "${cedulaAleatoria()}",
-                 |"candidato": 1
-                 |}""".stripMargin)
+              """{
+                        "cedula": "1000794540",
+                        "candidato": 2
+                      }
+                    """)
             ))
 
 
