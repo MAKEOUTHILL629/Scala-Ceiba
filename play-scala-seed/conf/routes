@@ -8,3 +8,27 @@ GET     /                           controllers.HomeController.index()
 
 # Map static resources from the /public folder to the /assets URL path
 GET     /assets/*file               controllers.Assets.versioned(path="/public", file: Asset)
+
+GET /docientos                      controllers.PruebasController.okkk()
+GET /cuatrocientosuno               controllers.PruebasController.clientError()
+GET /quinientos                     controllers.PruebasController.errorServer()
+GET /pdf                            controllers.PruebasController.pdf()
+
+
+GET /get                            controllers.GetPostPutDeletePatchControlador.get()
++ nocsrf
+POST /post                          controllers.GetPostPutDeletePatchControlador.post()
++ nocsrf
+PUT /put                         controllers.GetPostPutDeletePatchControlador.put()
++ nocsrf
+DELETE /delete                      controllers.GetPostPutDeletePatchControlador.delete()
++ nocsrf
+PATCH /patch                        controllers.GetPostPutDeletePatchControlador.patch()
+
+GET /params                        controllers.PruebasController.params(param1: Int, param2: String)
+
+GET /headers                      controllers.PruebasController.headersImpresion()
+
+GET /cookies                      controllers.PruebasController.cookiesImpresor()
+
+GET /future                      controllers.PruebasController.future()
