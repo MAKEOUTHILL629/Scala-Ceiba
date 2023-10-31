@@ -4067,7 +4067,7 @@ Si algo no está bien configurado, se le notificará directamente en su navegado
 
 Base de datos en memoria:
 
-```scala
+```conf
 # Configuración por defecto de la base de datos utilizando el motor de base de datos H2 en modo en memoria
 db.default.driver=org.h2.Driver
 db.default.url="jdbc:h2:mem:play"
@@ -4075,8 +4075,951 @@ db.default.url="jdbc:h2:mem:play"
 
 Base de datos basada en ficheros:
 
-```scala
+```conf
 # Configuración por defecto de la base de datos utilizando el motor de base de datos H2 en modo persistente
 db.default.driver=org.h2.Driver
 db.default.url="jdbc:h2:/path/to/db-file"
+```
+
+#### Propiedades de conexión del motor de base de datos SQLite
+
+```conf
+# Default database configuration using SQLite database engine
+db.default.driver=org.sqlite.JDBC
+db.default.url="jdbc:sqlite:/path/to/db-file"
+```
+
+#### Propiedades de conexión del motor de base de datos PostgreSQL
+
+```conf
+# Default database configuration using PostgreSQL database engine
+db.default.driver=org.postgresql.Driver
+db.default.url="jdbc:postgresql://database.example.com/playdb"
+```
+
+#### Propiedades de conexión del motor de base de datos MySQL
+
+```conf
+# Default database configuration using MySQL database engine
+# Connect to playdb as playdbuser
+db.default.driver=com.mysql.jdbc.Driver
+db.default.url="jdbc:mysql://localhost/playdb"
+db.default.username=playdbuser
+db.default.password="a strong password"
+```
+
+### Cómo configurar varias fuentes de datos
+
+```conf
+# Orders database
+db.orders.driver=org.h2.Driver
+db.orders.url="jdbc:h2:mem:orders"
+
+# Customers database
+db.customers.driver=org.h2.Driver
+db.customers.url="jdbc:h2:mem:customers"
+```
+
+### Exposición de la fuente de datos a través de JNDI
+
+Algunas bibliotecas esperan recuperar la referencia Datasource de JNDI. Puede exponer cualquier fuente de datos gestionada por Play a través de JNDI añadiendo esta configuración en conf/application.conf:
+
+```conf
+db.default.driver=org.h2.Driver
+db.default.url="jdbc:h2:mem:play"
+db.default.jndiName=DefaultDS
+```
+
+### Cómo configurar la sentencia de registro SQL
+
+No todos los repositorios de conexiones ofrecen (por defecto) la posibilidad de registrar las sentencias SQL. HikariCP, por ejemplo, sugiere que utilice las capacidades de registro de su proveedor de base de datos. De la documentación de HikariCP:
+
+#### Registrar texto de sentencia / Registro lento de consultas
+
+Al igual que el almacenamiento en caché de sentencias, la mayoría de los principales proveedores de bases de datos soportan el registro de sentencias a través de las propiedades de su propio controlador. Esto incluye Oracle, MySQL, Derby, MSSQL y otros. Algunos incluso soportan el registro de consultas lentas. Consideramos que se trata de una característica de "tiempo de desarrollo". Para esas pocas bases de datos que no lo soportan, jdbcdslog-exp es una buena opción. Gran cosa durante el desarrollo y pre-Producción.
+
+Por ello, Play utiliza jdbcdslog-exp para habilitar el soporte consistente de sentencias de registro SQL para los pools soportados. La sentencia de registro SQL se puede configurar por base de datos, utilizando la propiedad logSql:
+
+```conf
+# Default database configuration using PostgreSQL database engine
+db.default.driver=org.postgresql.Driver
+db.default.url="jdbc:postgresql://database.example.com/playdb"
+db.default.logSql=true
+```
+
+Después de eso, puedes configurar el nivel de registro de jdbcdslog-exp como se explica en su manual. Básicamente, necesitas configurar tu logger raíz a INFO y luego decidir qué registrará jdbcdslog-exp (conexiones, sentencias y conjuntos de resultados). Aquí hay un ejemplo usando logback.xml para configurar los registros:
+
+```xml
+<!--
+   Copyright (C) Lightbend Inc. <https://www.lightbend.com>
+-->
+
+<!-- The default logback configuration that Play uses if no other configuration is provided -->
+<configuration>
+
+  <conversionRule conversionWord="coloredLevel" converterClass="play.api.libs.logback.ColoredLevel" />
+
+  <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+     <file>${application.home:-.}/logs/application.log</file>
+     <encoder>
+       <pattern>%date [%level] from %logger in %thread - %message%n%xException</pattern>
+     </encoder>
+  </appender>
+
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%coloredLevel %logger{15} - %message%n%xException{10}</pattern>
+    </encoder>
+  </appender>
+
+  <appender name="ASYNCFILE" class="ch.qos.logback.classic.AsyncAppender">
+    <appender-ref ref="FILE" />
+  </appender>
+
+  <appender name="ASYNCSTDOUT" class="ch.qos.logback.classic.AsyncAppender">
+    <appender-ref ref="STDOUT" />
+  </appender>
+
+  <logger name="play" level="INFO" />
+  <logger name="application" level="DEBUG" />
+
+  <!-- https://hibernate.atlassian.net/browse/HV-1323 -->
+  <logger name="org.hibernate.validator.messageinterpolation.ParameterMessageInterpolator" level="ERROR" />
+
+  <logger name="org.jdbcdslog.ConnectionLogger" level="OFF"  /> <!-- Won' log connections -->
+  <logger name="org.jdbcdslog.StatementLogger"  level="INFO" /> <!-- Will log all statements -->
+  <logger name="org.jdbcdslog.ResultSetLogger"  level="OFF"  /> <!-- Won' log result sets -->
+
+  <root level="WARN">
+    <appender-ref ref="ASYNCFILE" />
+    <appender-ref ref="ASYNCSTDOUT" />
+  </root>
+
+  <shutdownHook class="ch.qos.logback.core.hook.DelayingShutdownHook"/> 
+  
+</configuration>
+```
+
+**Advertencia:** Ten en cuenta que esto está pensado para ser usado sólo en entornos de desarrollo y no deberías configurarlo en producción, ya que hay una degradación del rendimiento y contaminará tus logs.
+
+### Configuración de la dependencia del controlador JDBC
+
+Play sólo incluye un controlador de base de datos H2. Por consiguiente, para desplegarlo en producción, deberá añadir su controlador de base de datos como dependencia.
+
+Por ejemplo, si utiliza MySQL5, deberá añadir una dependencia para el conector:
+
+```sbt
+libraryDependencies += "mysql" % "mysql-connector-java" % "5.1.41"
+```
+
+O si el controlador no se puede encontrar en los repositorios, puede colocar el controlador en el directorio lib de dependencias no gestionadas de su proyecto.
+
+### Configuración de un CustomExecutionContext
+
+Siempre debes usar un contexto de ejecución personalizado cuando uses JDBC, para asegurarte de que el grupo de hilos de renderizado de Play está completamente centrado en renderizar páginas y usar los núcleos al máximo. Puedes usar la clase CustomExecutionContext de Play para configurar un contexto de ejecución personalizado dedicado a servir operaciones JDBC. Mira ScalaAsync y ThreadPools para más detalles.
+
+Todas las plantillas de ejemplo de Play en la página de descargas de Play que utilizan APIs de bloqueo (es decir, Anorm, JPA) se han actualizado para utilizar contextos de ejecución personalizados cuando sea apropiado. Por ejemplo, en https://github.com/playframework/play-scala-anorm-example/ se muestra que la clase CompanyRepository toma un DatabaseExecutionContext que envuelve todas las operaciones de base de datos.
+
+Para el dimensionamiento del pool de hilos que implica pools de conexión JDBC, se desea un tamaño de pool de hilos fijo que coincida con el pool de conexión, utilizando un ejecutor de pool de hilos. Siguiendo los consejos de la página de HikariCP sobre dimensionamiento de pools, deberías configurar tu pool de conexiones JDBC al doble del número de núcleos físicos, más el número de spindles de disco, es decir, si tienes una CPU de cuatro núcleos y un disco, tienes un total de 9 conexiones JDBC en el pool:
+
+```conf
+# db connections = ((physical_core_count * 2) + effective_spindle_count)
+fixedConnectionPool = 9
+
+database.dispatcher {
+  executor = "thread-pool-executor"
+  throughput = 1
+  thread-pool-executor {
+    fixed-pool-size = ${fixedConnectionPool}
+  }
+}
+```
+
+### Obtener una conexión JDBC
+
+Hay varias formas de recuperar una conexión JDBC. El siguiente código muestra un ejemplo JDBC muy simple, trabajando con MySQL 5.*:
+
+```scala
+package controllers
+import javax.inject.Inject
+
+import play.api.db._
+import play.api.mvc._
+
+class ScalaControllerInject @Inject()(db: Database, val controllerComponents: ControllerComponents)
+    extends BaseController {
+
+  def index = Action {
+    var outString = "Number is "
+    val conn      = db.getConnection()
+
+    try {
+      val stmt = conn.createStatement
+      val rs   = stmt.executeQuery("SELECT 9 as testkey ")
+
+      while (rs.next()) {
+        outString += rs.getString("testkey")
+      }
+    } finally {
+      conn.close()
+    }
+    Ok(outString)
+  }
+
+}
+```
+
+Pero por supuesto necesitas llamar a close() en algún momento en la conexión abierta para devolverla al pool de conexiones. Otra forma es dejar que Play gestione el cierre de la conexión por ti:
+
+```scala
+// access "default" database
+db.withConnection { conn =>
+  // do whatever you need with the connection
+}
+```
+
+La conexión se cerrará automáticamente al final del bloque.
+
+**Consejo:** Cada Statement y ResultSet creado con esta conexión se cerrará también.
+
+Una variante es establecer el auto-commit de la conexión en false y gestionar una transacción para el bloque:
+
+```scala
+db.withTransaction { conn =>
+  // do whatever you need with the connection
+}
+```
+
+Para una base de datos distinta de la predeterminada:
+
+```scala
+package controllers
+import javax.inject.Inject
+
+import play.api.mvc.BaseController
+import play.api.mvc.ControllerComponents
+import play.api.db.Database
+import play.api.db.NamedDatabase
+
+// inject "orders" database instead of "default"
+class ScalaInjectNamed @Inject()(
+    @NamedDatabase("orders") db: Database,
+    val controllerComponents: ControllerComponents
+) extends BaseController {
+  // do whatever you need with the db
+}
+```
+
+### Selección y configuración del grupo de conexiones
+
+Play proporciona dos implementaciones de pool de conexión a bases de datos, HikariCP y BoneCP. El valor predeterminado es HikariCP, pero esto se puede cambiar estableciendo la propiedad play.db.pool:
+
+play.db.pool=bonecp
+El rango completo de opciones de configuración para los pools de conexión se puede encontrar inspeccionando la propiedad play.db.prototype en el JDBC reference.conf de Play.
+
+## Testing de Base de Datos
+
+Aunque es posible escribir pruebas funcionales usando ScalaTest o specs2 que prueben el código de acceso a la base de datos arrancando una aplicación completa incluyendo la base de datos, arrancar una aplicación completa no es a menudo deseable, debido a la complejidad de tener muchos más componentes arrancados y ejecutándose sólo para probar una pequeña parte de tu aplicación.
+
+Play proporciona una serie de utilidades para ayudar a probar el código de acceso a la base de datos que permiten probarlo con una base de datos pero de forma aislada del resto de la aplicación. Estas utilidades pueden usarse fácilmente con ScalaTest o specs2, y pueden hacer que tus pruebas de base de datos sean mucho más parecidas a pruebas unitarias ligeras y rápidas que a pruebas funcionales pesadas y lentas.
+
+### Utilizar una base de datos
+
+Para probar con un backend de base de datos, sólo necesitas:
+
+```sbt
+libraryDependencies += jdbc % Test
+```
+
+Para conectarse a una base de datos, como mínimo, sólo necesita el nombre del controlador de la base de datos y la url de la base de datos, utilizando el objeto Databases companion. Por ejemplo, para conectarse a MySQL, puede utilizar lo siguiente:
+
+```scala
+import play.api.db.Databases
+
+val database = Databases(
+  driver = "com.mysql.jdbc.Driver",
+  url = "jdbc:mysql://localhost/test"
+)
+```
+
+Esto creará un grupo de conexiones de base de datos para la base de datos de prueba MySQL que se ejecuta en localhost, con el nombre por defecto. El nombre de la base de datos sólo se utiliza internamente por Play, por ejemplo, por otras características tales como evoluciones, para cargar recursos asociados con esa base de datos.
+
+Es posible que desee especificar otra configuración para la base de datos, incluyendo un nombre personalizado, o propiedades de configuración tales como nombres de usuario, contraseñas y los diversos elementos de configuración del grupo de conexiones que Play soporta, proporcionando un parámetro de nombre personalizado y/o un parámetro de configuración personalizado:
+
+```scala
+import play.api.db.Databases
+
+val database = Databases(
+  driver = "com.mysql.jdbc.Driver",
+  url = "jdbc:mysql://localhost/test",
+  name = "mydatabase",
+  config = Map(
+    "username" -> "test",
+    "password" -> "secret"
+  )
+)
+```
+
+Después de utilizar una base de datos, ya que la base de datos suele estar respaldada por un grupo de conexiones que mantiene conexiones abiertas y también puede tener subprocesos en ejecución, es necesario cerrarla. Esto se hace llamando al método shutdown:
+
+```scala
+database.shutdown()
+```
+
+Crear manualmente la base de datos y cerrarla es útil si estás usando un framework de pruebas que ejecuta código de inicio/cierre alrededor de cada prueba o suite. De lo contrario, se recomienda dejar que Play gestione el grupo de conexiones por ti.
+
+#### Permitir que Play gestione la base de datos por ti
+
+Play también proporciona un ayudante withDatabase que permite suministrar un bloque de código para ejecutar con un pool de conexión a base de datos gestionado por Play. Play se asegurará de que se cierre correctamente después de que el bloque de código termine de ejecutarse:
+
+```scala
+import play.api.db.Databases
+
+Databases.withDatabase(
+  driver = "com.mysql.jdbc.Driver",
+  url = "jdbc:mysql://localhost/test"
+) { database =>
+  val connection = database.getConnection()
+// ...
+}
+```
+
+Al igual que el método de fábrica Database.apply, withDatabase también le permite pasar un nombre personalizado y un mapa de configuración si lo desea.
+
+Típicamente, usar withDatabase directamente desde cada test es una cantidad excesiva de código boilerplate. Se recomienda que cree su propio helper para eliminar este boiler plate que utiliza su test. Por ejemplo:
+
+```scala
+import play.api.db.Database
+import play.api.db.Databases
+
+def withMyDatabase[T](block: Database => T) = {
+  Databases.withDatabase(
+    driver = "com.mysql.jdbc.Driver",
+    url = "jdbc:mysql://localhost/test",
+    name = "mydatabase",
+    config = Map(
+      "username" -> "test",
+      "password" -> "secret"
+    )
+  )(block)
+}
+```
+
+De este modo, puede utilizarse fácilmente en cada prueba con un mínimo de repeticiones:
+
+```scala
+withMyDatabase { database =>
+  val connection = database.getConnection()
+// ...
+}
+```
+
+**Consejo:** Puede utilizar esto para externalizar la configuración de su base de datos de prueba, utilizando variables de entorno o propiedades del sistema para configurar qué base de datos utilizar y cómo conectarse a ella. Esto permite la máxima flexibilidad para que los desarrolladores tengan sus propios entornos configurados a su gusto, así como para los sistemas CI que proporcionan entornos particulares que pueden diferir de los de desarrollo.
+
+#### Utilizar una base de datos en memoria
+
+Algunas personas prefieren no tener que instalar infraestructuras como bases de datos para ejecutar pruebas. Play proporciona ayudas sencillas para crear una base de datos en memoria H2 para estos fines:
+
+```scala
+import play.api.db.Databases
+
+val database = Databases.inMemory()
+```
+
+La base de datos en memoria puede configurarse proporcionando un nombre personalizado, argumentos de URL personalizados y una configuración personalizada del grupo de conexiones. A continuación se muestra el argumento MODE para indicar a H2 que emule MySQL, así como la configuración del grupo de conexiones para registrar todas las sentencias:
+
+```scala
+import play.api.db.Databases
+
+val database = Databases.inMemory(
+  name = "mydatabase",
+  urlOptions = Map(
+    "MODE" -> "MYSQL"
+  ),
+  config = Map(
+    "logStatements" -> true
+  )
+)
+```
+
+Al igual que con la fábrica de base de datos genérica, asegúrese de cerrar siempre el grupo de conexiones de base de datos en memoria:
+  
+```scala
+database.shutdown()
+```
+
+Si no está utilizando un marco de pruebas antes/después de las capacidades, es posible que desee que Play gestione el ciclo de vida de la base de datos en memoria para usted, esto es sencillo utilizando withInMemory:
+
+```scala
+import play.api.db.Databases
+
+Databases.withInMemory() { database =>
+  val connection = database.getConnection()
+
+// ...
+}
+```
+
+Al igual que withDatabase, se recomienda que para reducir el código repetitivo, cree su propio método que envuelva la llamada withInMemory:
+
+```scala
+import play.api.db.Database
+import play.api.db.Databases
+
+def withMyDatabase[T](block: Database => T) = {
+  Databases.withInMemory(
+    name = "mydatabase",
+    urlOptions = Map(
+      "MODE" -> "MYSQL"
+    ),
+    config = Map(
+      "logStatements" -> true
+    )
+  )(block)
+}
+```
+
+### Aplicar evoluciones
+
+Cuando ejecute pruebas, normalmente querrá que su esquema de base de datos sea gestionado para su base de datos. Si ya está utilizando evoluciones, a menudo tendrá sentido reutilizar las mismas evoluciones que utiliza en desarrollo y producción en sus pruebas. También es posible que desee crear evoluciones personalizadas sólo para las pruebas. Play proporciona algunos ayudantes prácticos para aplicar y gestionar evoluciones sin tener que ejecutar una aplicación Play completa.
+
+Para aplicar evoluciones, puedes utilizar applyEvolutions del objeto complementario Evolutions:
+
+```scala
+import play.api.db.evolutions._
+
+Evolutions.applyEvolutions(database)
+```
+
+Esto cargará las evoluciones desde el classpath en el directorio evolutions/<databasename>, y las aplicará.
+
+Después de ejecutar una prueba, es posible que desee restablecer la base de datos a su estado original. Si has implementado tus scripts de caída de evoluciones de tal forma que eliminen todas las tablas de la base de datos, puedes hacerlo simplemente llamando al método cleanupEvolutions:
+
+Evolutions.cleanupEvolutions(database)
+
+#### Evoluciones personalizadas
+
+En algunas situaciones es posible que desee ejecutar algunas evoluciones personalizadas en sus pruebas. Las evoluciones personalizadas pueden utilizarse utilizando un EvolutionsReader personalizado. El más simple de ellos es el SimpleEvolutionsReader, que es un lector de evoluciones que toma un mapa preconfigurado de nombres de bases de datos a secuencias de scripts Evolution, y puede construirse utilizando los métodos convenientes en el objeto compañero SimpleEvolutionsReader. Por ejemplo:
+
+```scala
+import play.api.db.evolutions._
+
+Evolutions.applyEvolutions(
+  database,
+  SimpleEvolutionsReader.forDefault(
+    Evolution(
+      1,
+      "create table test (id bigint not null, name varchar(255));",
+      "drop table test;"
+    )
+  )
+)
+```
+
+La limpieza de las evoluciones personalizadas se realiza de la misma forma que la de las evoluciones normales, utilizando el método cleanupEvolutions:
+
+```scala
+Evolutions.cleanupEvolutions(database)
+```
+
+Ten en cuenta que no necesitas pasar el lector de evoluciones personalizado aquí, esto se debe a que el estado de las evoluciones se almacena en la base de datos, incluyendo los scripts de baja que se utilizarán para derribar la base de datos.
+
+A veces será poco práctico poner tus scripts de evolución personalizados en código. Si este es el caso, puede ponerlos en el directorio de recursos de prueba, bajo una ruta personalizada utilizando el ClassLoaderEvolutionsReader. Por ejemplo:
+
+```scala
+import play.api.db.evolutions._
+
+Evolutions.applyEvolutions(database, ClassLoaderEvolutionsReader.forPrefix("testdatabase/"))
+```
+
+Esto cargará evoluciones, en la misma estructura y formato que se hace para desarrollo y producción, desde testdatabase/evolutions/<databasename>/<n>.sql.
+
+#### Permitir que Play gestione las evoluciones
+
+Los métodos applyEvolutions y cleanupEvolutions son útiles si estás utilizando un framework de pruebas para gestionar la ejecución de las evoluciones antes y después de una prueba. Play también proporciona un método conveniente withEvolutions para gestionarlo por ti, si se desea este enfoque más ligero:
+
+```scala
+import play.api.db.evolutions._
+
+Evolutions.withEvolutions(database) {
+  val connection = database.getConnection()
+
+  // ...
+}
+```
+
+Naturalmente, withEvolutions puede combinarse con withDatabase o withInMemory para reducir el código repetitivo, permitiéndole definir una función que instancie la base de datos y ejecute las evoluciones por usted:
+
+```scala
+import play.api.db.Database
+import play.api.db.Databases
+import play.api.db.evolutions._
+
+def withMyDatabase[T](block: Database => T) = {
+
+  Databases.withInMemory(
+    urlOptions = Map(
+      "MODE" -> "MYSQL"
+    ),
+    config = Map(
+      "logStatements" -> true
+    )
+  ) { database =>
+    Evolutions.withEvolutions(
+      database,
+      SimpleEvolutionsReader.forDefault(
+        Evolution(
+          1,
+          "create table test (id bigint not null, name varchar(255));",
+          "drop table test;"
+        )
+      )
+    ) {
+
+      block(database)
+
+    }
+  }
+}
+```
+
+Una vez definido el método de gestión de bases de datos personalizado para nuestras pruebas, ya podemos utilizarlas de forma sencilla:
+
+```scala
+withMyDatabase { database =>
+  val connection = database.getConnection()
+  connection.prepareStatement("insert into test values (10, 'testing')").execute()
+
+  connection
+    .prepareStatement("select * from test where id = 10")
+    .executeQuery()
+    .next() must_== true
+}
+```
+
+## Play Slick FAQ
+
+### ¿Qué versión debo utilizar?
+
+Eche un vistazo a la matriz de compatibilidad para saber qué versión debe utilizar.
+
+### play.db.pool se ignora
+
+Efectivamente es así. Cambiar el valor de play.db.pool no afectará a qué pool de conexión va a utilizar Slick. La razón es simplemente que el módulo Play Slick actualmente no soporta el uso de un pool de conexión diferente a HikariCP.
+
+### Cambio del grupo de conexiones utilizado por Slick
+
+Mientras que Slick permite utilizar un pool de conexiones diferente a HikariCP (aunque, Slick actualmente sólo ofrece soporte integrado para HikariCP, y requiere que proporciones una implementación de JdbcDataSourceFactory si deseas utilizar un pool de conexiones diferente), Play Slick actualmente no permite utilizar un pool de conexiones diferente a HikariCP. Si necesitas esta característica, puedes enviarnos una nota a playframework-dev.
+
+### Ya se ha configurado un enlace a play.api.db.DBApi
+
+Si obtiene la siguiente excepción al iniciar su aplicación Play:
+
+```scala
+1) A binding to play.api.db.DBApi was already configured at play.api.db.slick.evolutions.EvolutionsModule.bindings:
+Binding(interface play.api.db.DBApi to ConstructionTarget(class play.api.db.slick.evolutions.internal.DBApiAdapter) in interface javax.inject.Singleton).
+ at play.api.db.DBModule.bindings(DBModule.scala:25):
+Binding(interface play.api.db.DBApi to ProviderConstructionTarget(class play.api.db.DBApiProvider))
+```
+
+Es muy probable que hayas habilitado el plugin jdbc, y eso no tiene mucho sentido si estás usando Slick para acceder a tus bases de datos. Para solucionar el problema simplemente elimina el componente Play jdbc de la compilación de tu proyecto.
+
+Otra posibilidad es que haya otro módulo de Play que esté vinculando DBApi a alguna otra implementación concreta. Esto significa que todavía estás intentando usar Play Slick junto con otro módulo Play para acceder a la base de datos, lo que probablemente no es lo que quieres.
+
+### Play lanza java.lang.ClassNotFoundException: org.h2.tools.Server
+
+Si obtiene la siguiente excepción al iniciar su aplicación Play:
+
+```scala
+java.lang.ClassNotFoundException: org.h2.tools.Server
+        at java.net.URLClassLoader$1.run(URLClassLoader.java:372)
+        at java.net.URLClassLoader$1.run(URLClassLoader.java:361)
+        ...
+```
+
+Significa que estás intentando utilizar una base de datos H2, pero has olvidado añadir una dependencia de la misma en la compilación de tu proyecto. Solucionar el problema es simple, sólo tiene que añadir la dependencia que falta en la construcción de su proyecto, por ejemplo,
+
+```sbt
+"com.h2database" % "h2" % "${H2_VERSION}" // replace `${H2_VERSION}` with an actual version number
+```
+
+## La API de caché de Play
+
+Almacenar datos en caché es una optimización típica en las aplicaciones modernas, por lo que Play proporciona una caché global.
+
+Un punto importante sobre la caché es que se comporta como debe comportarse una caché: los datos que acabas de almacenar pueden desaparecer.
+
+Para cualquier dato almacenado en la caché, es necesario poner en marcha una estrategia de regeneración en caso de que los datos desaparezcan. Esta filosofía es uno de los fundamentos de Play, y es diferente de Java EE, donde se espera que la sesión conserve los valores durante toda su vida útil.
+
+La implementación por defecto de la API de Caché utiliza Ehcache.
+
+### Importación de la API de caché
+
+Play proporciona tanto una API como una implementación Ehcache por defecto de esa API. Para obtener la implementación completa de Ehcache, añade ehcache a tu lista de dependencias:
+
+```sbt
+libraryDependencies ++= Seq(
+  ehcache
+)
+```
+
+Esto también configurará automáticamente los enlaces para DI en tiempo de ejecución para que los componentes sean inyectables. Si utiliza DI en tiempo de compilación, mezcle EhCacheComponents en su pastel de componentes para obtener acceso a defaultCacheApi y al método cacheApi para obtener una caché por nombre.
+
+Para añadir sólo la API, añade cacheApi a tu lista de dependencias.
+
+```sbt
+libraryDependencies ++= Seq(
+  cacheApi
+)
+```
+
+La dependencia de la API es útil si quieres definir tus propios enlaces para el ayudante Cached y AsyncCacheApi, etc., sin tener que depender de Ehcache. Si estás escribiendo un módulo de caché personalizado deberías usar esto.
+
+### JCache Support
+
+Ehcache implementa la especificación JSR 107, también conocida como JCache, pero Play no enlaza javax.caching.CacheManager por defecto. Para vincular javax.caching.CacheManager al proveedor predeterminado, añada lo siguiente a su lista de dependencias:
+
+```sbt
+libraryDependencies += jcache
+```
+
+Si utiliza Guice, puede añadir lo siguiente para las anotaciones Java:
+
+```sbt
+libraryDependencies += "org.jsr107.ri" % "cache-annotations-ri-guice" % "1.0.0"
+```
+
+### Acceso a la API de caché
+
+La API de caché se define mediante los rasgos AsyncCacheApi y SyncCacheApi, dependiendo de si desea una implementación asíncrona o síncrona, y puede inyectarse en su componente como cualquier otra dependencia. Por ejemplo:
+
+```scala
+import play.api.cache._
+import play.api.mvc._
+import javax.inject.Inject
+
+class Application @Inject()(cache: AsyncCacheApi, cc: ControllerComponents) extends AbstractController(cc) {}
+```
+
+**Nota:** La API es intencionadamente mínima para permitir conectar varias implementaciones. Si necesita una API más específica, utilice la que proporciona su complemento de caché.
+
+Utilizando esta sencilla API puedes almacenar datos en caché:
+
+```scala
+val result: Future[Done] = cache.set("item.key", connectedUser)
+```
+
+Y recuperarlo más tarde:
+
+```scala
+val futureMaybeUser: Future[Option[User]] = cache.get[User]("item.key")
+```
+
+Y recuperarlo más tarde:
+
+```scala
+val futureMaybeUser: Future[Option[User]] = cache.get[User]("item.key")
+```
+
+También hay un práctico ayudante para recuperar de la caché o establecer el valor en la caché si faltaba:
+
+```scala
+val futureUser: Future[User] = cache.getOrElseUpdate[User]("item.key") {
+  User.findById(connectedUser)
+}
+```
+
+**Nota:** getOrElseUpdate no es una operación atómica en Ehcache y se implementa como un get seguido por el cálculo del valor, y luego un set. Esto significa que es posible que el valor se calcule varias veces si varios subprocesos llaman a getOrElse simultáneamente.
+
+Puede especificar una duración de expiración pasando una duración, por defecto la duración es infinita:
+  
+```scala
+import scala.concurrent.duration._
+
+val result: Future[Done] = cache.set("item.key", connectedUser, 5.minutes)
+```
+
+Para eliminar un elemento de la caché utilice el método eliminar:
+
+```scala
+val removeResult: Future[Done] = cache.remove("item.key")
+```
+
+Para eliminar todos los elementos de la caché utilice el método removeAll:
+
+```scala
+val removeAllResult: Future[Done] = cache.removeAll()
+```
+
+removeAll() sólo está disponible en AsyncCacheApi, ya que eliminar todos los elementos de la caché rara vez es algo que se quiera hacer de forma síncrona. Se espera que la eliminación de todos los elementos de la caché solo sea necesaria como operación de administración en casos especiales, no como parte del funcionamiento normal de la aplicación.
+
+Tenga en cuenta que SyncCacheApi tiene la misma API, excepto que devuelve los valores directamente en lugar de utilizar futuros.
+
+### Acceso a diferentes cachés
+
+Es posible acceder a diferentes cachés. En la implementación por defecto de Ehcache, la caché por defecto se llama play, y se puede configurar creando un archivo llamado ehcache.xml. Se pueden configurar cachés adicionales con diferentes configuraciones, o incluso implementaciones.
+
+Si quieres acceder a varias cachés ehcache diferentes, tendrás que decirle a Play que las vincule en application.conf, así:
+
+```conf
+play.cache.bindCaches = ["db-cache", "user-cache", "session-cache"]
+```
+
+Por defecto, Play intentará crear estas cachés por ti. Si desea definirlos usted mismo en ehcache.xml, puede establecer:
+
+```conf
+play.cache.createBoundCaches = false
+```
+
+Ahora, para acceder a estas diferentes cachés, cuando las inyectes, utiliza el calificador NamedCache en tu dependencia, por ejemplo:
+
+```scala
+import play.api.cache._
+import play.api.mvc._
+import javax.inject.Inject
+
+class Application @Inject()(
+    @NamedCache("session-cache") sessionCache: AsyncCacheApi,
+    cc: ControllerComponents
+) extends AbstractController(cc) {}
+```
+
+### Establecer el contexto de ejecución
+
+Por defecto, todas las operaciones de Ehcache son bloqueantes, y las implementaciones asíncronas bloquearán hilos en el contexto de ejecución por defecto. Normalmente esto está bien si estás usando la configuración por defecto de Play, que sólo almacena elementos en memoria ya que las lecturas deberían ser relativamente rápidas. Sin embargo, dependiendo de cómo se configuró EhCache y dónde se almacenan los datos, este bloqueo de E/S podría ser demasiado costoso. En tal caso, puedes configurar un despachador Akka diferente y establecerlo a través de play.cache.dispatcher para que el complemento EhCache haga uso de él:
+
+```conf
+play.cache.dispatcher = "contexts.blockingCacheDispatcher"
+
+contexts {
+  blockingCacheDispatcher {
+    fork-join-executor {
+      parallelism-factor = 3.0
+    }
+  }
+}
+```
+
+### Almacenamiento en caché de respuestas HTTP
+
+Puede crear fácilmente acciones en caché inteligentes utilizando la composición de acciones estándar.
+
+**Nota:** Las instancias de Play HTTP Result son seguras para almacenar en caché y reutilizar más tarde.
+
+La clase Cached le ayuda a construir acciones en caché.
+
+```scala
+import play.api.cache.Cached
+import javax.inject.Inject
+
+class Application @Inject()(cached: Cached, cc: ControllerComponents) extends AbstractController(cc) {}
+```
+
+Puede almacenar en caché el resultado de una acción utilizando una clave fija como "homePage".
+
+```scala
+def index = cached("homePage") {
+  Action {
+    Ok("Hello world")
+  }
+}
+```
+
+Si los resultados varían, puede almacenar en caché cada resultado utilizando una clave diferente. En este ejemplo, cada usuario tiene un resultado en caché diferente.
+
+```scala
+def userProfile = WithAuthentication(_.session.get("username")) { userId =>
+  cached(req => "profile." + userId) {
+    Action.async {
+      User.find(userId).map { user =>
+        Ok(views.html.profile(user))
+      }
+    }
+  }
+}
+```
+
+### Caché de control
+
+Puede controlar fácilmente lo que desea almacenar en caché o lo que desea excluir de la caché.
+
+Es posible que desee almacenar en caché sólo 200 Ok resultados.
+
+```scala
+def get(index: Int) = cached.status(_ => "/resource/" + index, 200) {
+  Action {
+    if (index > 0) {
+      Ok(Json.obj("id" -> index))
+    } else {
+      NotFound
+    }
+  }
+}
+```
+
+O caché 404 No encontrado sólo durante un par de minutos
+
+```scala
+def get(index: Int) = {
+  val caching = cached
+    .status(_ => "/resource/" + index, 200)
+    .includeStatus(404, 600)
+
+  caching {
+    Action {
+      if (index % 2 == 1) {
+        Ok(Json.obj("id" -> index))
+      } else {
+        NotFound
+      }
+    }
+  }
+}
+```
+
+### Aplicaciones personalizadas
+
+Es posible proporcionar una implementación personalizada de la API de caché que sustituya o se sitúe junto a la implementación predeterminada.
+
+Para reemplazar la implementación por defecto basada en algo que no sea Ehcache, sólo necesitas la dependencia cacheApi en lugar de la dependencia ehcache en tu build.sbt. Si todavía necesitas acceder a las clases de implementación de Ehcache, puedes usar ehcache y desactivar el módulo para que no se vincule automáticamente en application.conf:
+
+```conf
+play.modules.disabled += "play.api.cache.ehcache.EhCacheModule"
+```
+
+Entonces puedes implementar AsyncCacheApi y enlazarlo en el contenedor DI. También puedes enlazar SyncCacheApi a DefaultSyncCacheApi, que simplemente envuelve la implementación asíncrona.
+
+Ten en cuenta que puede que tu implementación de caché no soporte el método removeAll, ya sea porque no es posible o porque sería innecesariamente ineficiente. Si ese es el caso, puedes lanzar una UnsupportedOperationException en el método removeAll.
+
+Para proporcionar una implementación de la API de caché además de la implementación predeterminada, puede crear un calificador personalizado o reutilizar el calificador NamedCache para vincular la implementación.
+
+## Llamada a API REST con Play WS
+
+A veces nos gustaría llamar a otros servicios HTTP desde dentro de una aplicación Play. Play soporta esto a través de su biblioteca WS, que proporciona una manera de hacer llamadas HTTP asíncronas a través de una instancia WSClient.
+
+Hay dos partes importantes en el uso de WSClient: hacer una petición y procesar la respuesta. Primero discutiremos cómo hacer peticiones HTTP GET y POST, y luego mostraremos cómo procesar la respuesta desde WSClient. Finalmente, discutiremos algunos casos de uso común.
+
+**Nota:** En Play 2.6, Play WS se ha dividido en dos, con un cliente autónomo subyacente que no depende de Play, y una envoltura encima que utiliza clases específicas de Play. Además, las versiones sombreadas de AsyncHttpClient y Netty se utilizan ahora en Play WS para minimizar los conflictos de librerías, principalmente para que el motor HTTP de Play pueda utilizar una versión diferente de Netty. Por favor, consulte la guía de migración 2.6 para más información.
+
+### Añadir WS al proyecto
+
+Para utilizar WSClient, primero añada ws a su archivo build.sbt:
+
+```sbt
+libraryDependencies += ws
+```
+
+### Activación del caché HTTP en Play WS
+
+Play WS soporta caché HTTP, pero requiere una implementación de caché JSR-107 para habilitar esta función. Puedes añadir ehcache:
+
+```conf
+libraryDependencies += ehcache
+```
+
+También puede utilizar otra caché compatible con JSR-107, como Caffeine.
+
+Una vez que tenga las dependencias de la biblioteca, habilite la caché HTTP como se muestra en la página WS Cache Configuration.
+
+El uso de una caché HTTP supone un ahorro en peticiones repetidas a los servicios REST backend, y es especialmente útil cuando se combina con características de resiliencia como stale-on-error y stale-while-revalidate.
+
+### Realizar una solicitud
+
+Ahora cualquier componente que quiera utilizar WS tendrá que declarar una dependencia del WSClient:
+
+```scala
+import javax.inject.Inject
+import scala.concurrent.Future
+import scala.concurrent.duration._
+
+import play.api.mvc._
+import play.api.libs.ws._
+import play.api.http.HttpEntity
+
+import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
+import akka.stream.scaladsl._
+import akka.util.ByteString
+
+import scala.concurrent.ExecutionContext
+
+class Application @Inject()(ws: WSClient) extends Controller {}
+```
+
+Hemos llamado a la instancia WSClient ws, todos los ejemplos siguientes asumirán este nombre.
+
+Para construir una petición HTTP, se empieza con ws.url() para especificar la URL.
+
+```scala
+val request: WSRequest = ws.url(url)
+```
+
+Devuelve una WSRequest que puede utilizar para especificar varias opciones HTTP, como la configuración de cabeceras. Puedes encadenar llamadas para construir peticiones complejas.
+
+```scala
+val complexRequest: WSRequest =
+  request
+    .addHttpHeaders("Accept" -> "application/json")
+    .addQueryStringParameters("search" -> "play")
+    .withRequestTimeout(10000.millis)
+```
+
+Se termina llamando a un método correspondiente al método HTTP que se desea utilizar. Esto termina la cadena, y utiliza todas las opciones definidas en la petición construida en el WSRequest.
+
+```scala
+val futureResponse: Future[WSResponse] = complexRequest.get()
+```
+
+Esto devuelve un Future[WSResponse] donde la Respuesta contiene los datos devueltos por el servidor.
+
+Si estás haciendo cualquier trabajo de bloqueo, incluyendo cualquier tipo de trabajo DNS como llamar a java.util.URL.equals(), entonces deberías usar un contexto de ejecución personalizado como se describe en ThreadPools, preferiblemente a través de un CustomExecutionContext. Debes dimensionar el pool para dejar un margen de seguridad lo suficientemente grande como para tener en cuenta los fallos.
+
+Si está llamando a una red poco fiable, considere el uso de Futures.timeout y un interruptor como Failsafe.
+
+#### Solicitud con autenticación
+
+Si necesitas utilizar autenticación HTTP, puedes especificarla en el constructor, utilizando un nombre de usuario, una contraseña y un AuthScheme. Los objetos de caso válidos para el AuthScheme son BASIC, DIGEST, KERBEROS, NTLM y SPNEGO.
+
+```scala
+ws.url(url).withAuth(user, password, WSAuthScheme.BASIC).get()
+```
+
+#### Solicitud con redireccionamientos follow
+
+Si una llamada HTTP resulta en una redirección 302 o 301, puede seguir automáticamente la redirección sin tener que hacer otra llamada.
+
+```scala
+ws.url(url).withFollowRedirects(true).get()
+```
+
+#### Solicitud con parámetros de consulta
+
+Los parámetros pueden especificarse como una serie de tuplas clave/valor. Utilice addQueryStringParameters para añadir parámetros y withQueryStringParameters para sobrescribir todos los parámetros de cadena de consulta.
+
+```scala
+ws.url(url).addQueryStringParameters("paramKey" -> "paramValue").get()
+```
+
+#### Solicitud con cabeceras adicionales
+
+Las cabeceras pueden especificarse como una serie de tuplas clave/valor. Utilice addHttpHeaders para añadir cabeceras adicionales y withHttpHeaders para sobrescribir todas las cabeceras.
+
+```scala
+ws.url(url).addHttpHeaders("headerKey" -> "headerValue").get()
+```
+
+Si va a enviar texto sin formato en un formato concreto, es posible que desee definir el tipo de contenido explícitamente.
+
+```scala
+ws.url(url)
+  .addHttpHeaders("Content-Type" -> "application/xml")
+  .post(xmlString)
+```
+
+#### Solicitud con cookies
+
+Las cookies se pueden añadir a la solicitud utilizando DefaultWSCookie o pasando a través de play.api.mvc.Cookie. Utilice addCookies para añadir cookies y withCookies para sobrescribir todas las cookies.
+
+```scala
+ws.url(url).addCookies(DefaultWSCookie("cookieName", "cookieValue")).get()
 ```

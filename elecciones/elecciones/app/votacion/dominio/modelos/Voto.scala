@@ -8,7 +8,7 @@ case class Voto(id: Option[Int], cedula: String, candidato: Int)
 object Voto {
    val votoRead: Reads[Voto] = (
     (JsPath \ "id").readNullable[Int] and
-      (JsPath \ "cedula").read[String].filter(JsonValidationError("El atributo debe tener exactamente 10 caracteres numéricos")) { value => value.length == 10 && value.forall(_.isDigit) } and
+      (JsPath \ "cedula").read[String].filter(JsonValidationError("La cedula debe tener exactamente 10 caracteres numéricos")) { value => value.length == 10 && value.forall(_.isDigit) } and
       (JsPath \ "candidato").read[Int]
     )(Voto.apply _)
 

@@ -15,6 +15,10 @@ libraryDependencies += "com.typesafe.slick" %% "slick" % "3.3.3"
 libraryDependencies += "com.typesafe.slick" %% "slick-hikaricp" % "3.3.3"
 libraryDependencies += "mysql" % "mysql-connector-java" % "8.0.26"
 
+libraryDependencies ++= Seq(
+  ehcache
+)
+
 // Adds additional packages into Twirl
 //TwirlKeys.templateImports += "com.ceiba.controllers._"
 

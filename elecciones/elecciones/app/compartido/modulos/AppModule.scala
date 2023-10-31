@@ -3,6 +3,7 @@ package compartido.modulos
 import candidato.dominio.repositorio.CandidatoRepositorio
 import candidato.infraestructura.persistencia.CandidatoRepositorioMysql
 import com.google.inject.AbstractModule
+import play.cache.{AsyncCacheApi, DefaultAsyncCacheApi}
 import votacion.dominio.repositorio.VotoRepositorio
 import votacion.infraestructura.persistencia.VotoRepositorioMysql
 
@@ -11,5 +12,6 @@ class AppModule extends AbstractModule{
     bind(classOf[CandidatoRepositorio]).to(classOf[CandidatoRepositorioMysql])
 
     bind(classOf[VotoRepositorio]).to(classOf[VotoRepositorioMysql])
+
   }
 }
