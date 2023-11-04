@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="JAVA_MODULE" version="4">
+  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_1_8" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/comun" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ms-base" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ms-base/web/conf" type="java-resource" />
+      <sourceFolder url="file://$MODULE_DIR$/ms-base/web/test" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/ms-base/web/test/resources" type="java-test-resource" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" exported="" name="scala-sdk-2.13.12" level="application" />
+  </component>
+</module>

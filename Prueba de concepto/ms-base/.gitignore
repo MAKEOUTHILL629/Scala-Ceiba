@@ -1,0 +1,7 @@
+target
+.idea
+dist
+node_modules
+coverage
+domain/.vscode/settings.json
+domain/debug.log
