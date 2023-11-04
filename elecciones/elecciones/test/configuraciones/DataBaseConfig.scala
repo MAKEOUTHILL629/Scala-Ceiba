@@ -1,0 +1,5 @@
+package configuraciones
+
+object DataBaseConfig {
+
+}
