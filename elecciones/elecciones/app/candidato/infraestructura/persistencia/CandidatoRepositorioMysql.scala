@@ -2,14 +2,15 @@ package candidato.infraestructura.persistencia
 
 import candidato.dominio.modelos.Candidato
 import candidato.dominio.repositorio.CandidatoRepositorio
-import slick.jdbc.MySQLProfile.api._
-
+import play.api.db.slick.DatabaseConfigProvider
+import play.api.db.slick.HasDatabaseConfigProvider
+import slick.jdbc.JdbcProfile
 import javax.inject.{Inject, Singleton}
 import scala.concurrent.{ExecutionContext, Future}
 
 @Singleton
-final class CandidatoRepositorioMysql @Inject()(implicit ec: ExecutionContext) extends CandidatoRepositorio{
-  private val db = Database.forConfig("mysql")
+final class CandidatoRepositorioMysql @Inject()(implicit ec: ExecutionContext, protected val dbConfigProvider: DatabaseConfigProvider) extends CandidatoRepositorio with  HasDatabaseConfigProvider[JdbcProfile]{
+  import profile.api._
 
   private class CandidatosTable(tag: Tag) extends Table[Candidato](tag, "candidatos") {
     def id = column[Int]("id", O.PrimaryKey)

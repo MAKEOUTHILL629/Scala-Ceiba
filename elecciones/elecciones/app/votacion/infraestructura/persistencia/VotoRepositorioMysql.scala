@@ -2,16 +2,19 @@ package votacion.infraestructura.persistencia
 
 import com.google.inject.Singleton
 import compartido.modelos.VotosCandidato
-import slick.jdbc.GetResult
+import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
+import slick.jdbc.{GetResult, JdbcProfile}
 import votacion.dominio.modelos.Voto
 import votacion.dominio.repositorio.VotoRepositorio
-import slick.jdbc.MySQLProfile.api._
+
 
 import javax.inject.Inject
 import scala.concurrent.{ExecutionContext, Future}
 @Singleton
-class VotoRepositorioMysql @Inject()(implicit ec: ExecutionContext) extends VotoRepositorio{
-  private val db = Database.forConfig("mysql")
+class VotoRepositorioMysql @Inject()(implicit ec: ExecutionContext, protected val dbConfigProvider: DatabaseConfigProvider) extends VotoRepositorio with  HasDatabaseConfigProvider[JdbcProfile]{
+
+  import profile.api._
+
   implicit val votosCandidatoGetResult: GetResult[VotosCandidato] = GetResult(r => VotosCandidato(r.nextInt(), r.nextString(), r.nextInt()))
   private class VotosTable(tag: Tag) extends Table[Voto](tag, "votos") {
     def id: Rep[Option[Int]] = column[Int]("id", O.PrimaryKey)
