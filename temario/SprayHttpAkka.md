@@ -819,3 +819,397 @@ type Directive1[T] = Directive[T :: HNil]
 - Una `Directive[Int :: String :: HNil]` extrae un valor Int y un valor String (como una directiva `parameters('a.as[Int], 'b.as[String]`).
 
 Mantener las extracciones como HLists tiene muchas ventajas, principalmente una gran flexibilidad mientras se mantiene la seguridad de tipos y la "inferibilidad". Sin embargo, el número de veces que tendrás que volver a definir una directiva desde cero debería ser muy pequeño. De hecho, si te encuentras en una situación en la que una directiva "desde cero" es tu única opción, nos gustaría saberlo, para que podamos proporcionar un "algo" de nivel superior para otros usuarios.
+
+### spray-http
+
+El módulo spray-http contiene un modelo completamente inmutable, basado en clases de casos, de las principales estructuras de datos HTTP, como peticiones HTTP, respuestas y cabeceras comunes. También incluye un analizador sintáctico para estas últimas, capaz de construir los modelos de cabecera más estructurados a partir de pares nombre/valor de cabecera sin estructurar.
+
+#### Dependencies
+
+spray-http depende de akka-actor (con ámbito 'provided', es decir, tienes que traerlo tú mismo). También depende de parboiled, una biblioteca ligera de análisis PEG que proporciona la base para el analizador de cabecera. Dado que parboiled también está escrito y mantenido por los miembros del equipo spray, no es una dependencia "externa" sobre la que no tengamos control.
+
+#### Installation
+
+El capítulo Repositorio Maven contiene toda la información sobre cómo incluir spray-http en tu classpath.
+
+Después sólo tienes que `import spray.http._` para incluir todos los identificadores relevantes.
+
+#### Overview
+
+Dado que spray-http proporciona las estructuras de datos HTTP centrales para spray, encontrará la siguiente importación en bastantes lugares de la base de código de spray (y probablemente también en su propio código):
+
+```scala
+import spray.http._
+```
+
+Esto trae en el ámbito de todas las cosas relevantes que se definen aquí y que usted querrá trabajar, principalmente:
+
+- `HttpRequest` y `HttpResponse`, los modelos centrales de mensajes
+- `ChunkedRequestStart`, `ChunkedResponseStart`, `MessageChunk` y `ChunkedMessageEnd`, que modelan las diferentes partes de mensaje de los flujos de solicitud/respuesta
+- `HttpHeaders`, un objeto que contiene todos los modelos de cabecera HTTP definidos.
+- Soporta tipos como `Uri`, `HttpMethods`, `MediaTypes`, `StatusCodes`, etc.
+
+Un patrón común es que el modelo de una entidad determinada está representado por un tipo inmutable (clase o rasgo), mientras que las instancias reales de la entidad definida por la especificación HTTP viven en un objeto adjunto que lleva el nombre del tipo más una "s" al final.
+
+Por ejemplo:
+
+- Las instancias `HttpMethod` definidas viven en el objeto `HttpMethods`.
+- Las instancias `HttpCharset` definidas viven en el objeto `HttpCharsets`.
+- Las instancias `HttpEncoding` definidas viven en el objeto `HttpEncodings`.
+- Las instancias `HttpProtocol` definidas viven en el objeto `HttpProtocols`.
+- Las instancias `MediaType` definidas viven en el objeto `MediaTypes`.
+- Las instancias `StatusCode` definidas se almacenan en el objeto `StatusCodes`.
+
+Ya me entiendes.
+
+Con el fin de desarrollar una mejor comprensión de cómo los modelos HTTP spray probablemente debería tomar algún tiempo para navegar alrededor de las fuentes spray-http (idealmente con un IDE que soporta la navegación de código adecuado).
+
+### Content-Type Header
+
+Algo que merece la pena destacar es el tratamiento especial de la cabecera HTTP `Content-Type`. Dado que el contenido binario de las entidades de los mensajes HTTP sólo puede interpretarse correctamente cuando se conoce el tipo de contenido correspondiente, spray-http sitúa el valor del tipo de contenido muy cerca de los datos de la entidad. El tipo `HttpEntity.NonEmpty` (la variante no vacía de la `HttpEntity`) es esencialmente poco más que una tupla del `ContentType` y los bytes de la entidad. Toda la lógica en spray que necesita acceder al tipo de contenido de un mensaje HTTP siempre trabaja con el valor `ContentType` en la `HttpEntity`. Las posibles instancias existentes de la cabecera `Content-Type` en la lista de cabeceras de `HttpMessage` se ignoran.
+
+### Custom Media-Types
+
+spray-http define los tipos de medios más importantes del registro de tipos de medios MIME de IANA en el objeto MediaTypes, que también actúa como un registro en el que puede registrar sus propias instancias `CustomMediaType`:
+
+```scala
+import spray.http.MediaTypes._
+
+val MarkdownType = register(
+  MediaType.custom(
+    mainType = "text",
+    subType = "x-markdown",
+    compressible = true,
+    binary = false,
+    fileExtensions = Seq("markdown", "mdown", "md")))
+```
+
+Una vez registrado, el tipo personalizado se resolverá correctamente, por ejemplo, para las solicitudes entrantes mediante spray-routing o las respuestas entrantes mediante spray-client. La resolución de extensiones de archivos (como la utilizada, por ejemplo, por FileAndResourceDirectives) funcionará como se espera.
+
+## Marshalling
+
+"Marshalling" es el proceso de convertir una estructura de nivel superior (objeto) en algún tipo de representación de nivel inferior, a menudo un "formato de cable". Otros nombres populares son "serialización" o "decapado".
+
+En spray "Marshalling" significa la conversión de un objeto de tipo `T` en una `HttpEntity`, que forma el "cuerpo de la entidad" de una petición o respuesta HTTP (dependiendo de si se utiliza en el lado del cliente o del servidor).
+
+El Marshalling para instancias del tipo `T` se realiza mediante un `Marshaller[T]`, que se define así:
+
+```scala
+trait Marshaller[-T] {
+  def apply(value: T, ctx: MarshallingContext)
+}
+```
+
+Por lo tanto, un `Marshaller` no es una simple función `T => HttpEntity`, como cabría esperar inicialmente. Más bien utiliza el MarshallingContext dado para dirigir el proceso de marshalling desde su propio lado. Hay tres razones por las que los spray Marshallers están diseñados de esta manera:
+
+- El marshalling en el lado del servidor debe soportar la negociación de contenido, que es más fácil de implementar si el marshaller dirige el proceso.
+- Los Marshallers pueden retrasar sus acciones y completar el proceso de marshalling desde otro hilo en otro momento (por ejemplo, cuando llega el resultado de un Future), que no es algo que puedan hacer las funciones ordinarias. (Podríamos hacer que el Marshaller devolviera un Futuro, pero esto añadiría sobrecarga a la mayoría de los casos que no requieren una ejecución retardada).
+- Los Marshallers pueden producir más de una parte de respuesta, por lo que la secuencia de trozos de respuesta está disponible como un flujo de estilo pull o desde un productor de estilo push. Ambos enfoques deben ser compatibles.
+
+### Default Marshallers
+
+spray-httpx viene con Marshallers predefinidos para los siguientes tipos:
+
+- BasicMarshallers
+  - Array[Byte]
+  - Array[Char]
+  - String
+  - NodeSeq
+  - Throwable
+  - spray.http.FormData
+  - spray.http.HttpEntity
+- MetaMarshallers
+  - Option[T]
+  - Either[A, B]
+  - Try[T]
+  - Future[T]
+  - Stream[T]
+- MultipartMarshallers
+  - spray.http.MultipartContent
+  - spray.http.MultipartFormData
+
+### Implicit Resolution
+
+Dado que la infraestructura de marshalling utiliza un enfoque basado en clases de tipos, las instancias de marshaller para un tipo `T` tienen que estar disponibles implícitamente. Los implícitos para todos los Marshaller por defecto definidos por spray-httpx se proporcionan a través del objeto compañero del rasgo Marshaller. Esto significa que siempre están disponibles y nunca necesitan ser importados explícitamente. Además, puedes simplemente "sobreescribirlos" introduciendo tu propia versión personalizada en el ámbito local.
+
+### Custom Marshallers
+
+spray-httpx le proporciona algunas herramientas para construir Marshallers para sus propios tipos. Una de ellas es el ayudante `Marshaller.of`, que se define como tal:
+
+```scala
+def of[T](marshalTo: ContentType*)
+         (f: (T, ContentType, MarshallingContext) => Unit): Marshaller[T]
+```
+
+Con él se define, por ejemplo, el StringMarshaller por defecto:
+
+```scala
+// prefieren la codificación UTF-8, pero también renderizan con otras codificaciones si el cliente las solicita
+implicit val StringMarshaller = stringMarshaller(ContentTypes.`text/plain(UTF-8)`, ContentTypes.`text/plain`)
+
+def stringMarshaller(contentType: ContentType, more: ContentType*): Marshaller[String] =
+  Marshaller.of[String](contentType +: more: _*) { (value, contentType, ctx) ⇒
+    ctx.marshalTo(HttpEntity(contentType, value))
+  }
+```
+
+Como otro ejemplo, aquí hay una definición `Marshaller` para un tipo personalizado `Person`:
+
+```scala
+import spray.http._
+import spray.httpx.marshalling._
+
+val `application/vnd.acme.person` =
+  MediaTypes.register(MediaType.custom("application/vnd.acme.person"))
+
+case class Person(name: String, firstName: String, age: Int)
+
+object Person {
+  implicit val PersonMarshaller =
+    Marshaller.of[Person](`application/vnd.acme.person`) { (value, contentType, ctx) =>
+      val Person(name, first, age) = value
+      val string = "Person: %s, %s, %s".format(name, first, age)
+      ctx.marshalTo(HttpEntity(contentType, string))
+    }
+}
+
+marshal(Person("Bob", "Parr", 32)) ===
+  Right(HttpEntity(`application/vnd.acme.person`, "Person: Bob, Parr, 32"))
+```
+
+Como se puede ver en este ejemplo es mejor definir el `Marshaller` para `T` en el objeto compañero de `T`. De esta manera su marshaller está siempre dentro del ámbito, sin ningún impuesto de importación.
+
+### Deriving Marshallers
+
+A veces puede ahorrarse algo de trabajo reutilizando los Marshallers existentes para los suyos personalizados. La idea es "envolver" un `Marshaller` existente con algo de lógica para "reorientarlo" a tu tipo.
+
+En este sentido, envolver a un mariscal puede significar una o ambas de las dos cosas siguientes:
+
+- Transformar la entrada antes de que llegue al Marshaller envuelto
+- Transformar la salida del marshaller envuelto
+
+Se pueden hacer ambas cosas, pero la infraestructura de soporte existente favorece la primera sobre la segunda. El ayudante `Marshaller.delegate` te permite convertir un `Marshaller[B]` en un `Marshaller[A]` proporcionando una función `A => B`:
+
+```scala
+def delegate[A, B](marshalTo: ContentType*)
+                  (f: A => B)
+                  (implicit mb: Marshaller[B]): Marshaller[A]
+```
+
+Esto es utilizado, por ejemplo, por el NodeSeqMarshaller, que delega en el StringMarshaller de la siguiente manera:
+
+```scala
+implicit val NodeSeqMarshaller =
+  Marshaller.delegate[NodeSeq, String](`text/xml`, `application/xml`,
+    `text/html`, `application/xhtml+xml`)(_.toString)
+```
+
+También hay una segunda sobrecarga del ayudante delegado que toma una función `(A, ContentType) => B` en lugar de una función `A => B`. Es útil si tu conversión de entrada requiere acceso al `ContentType` al que se marshalla.
+
+Si desea el segundo tipo de envoltura, la transformación de la salida, las cosas son un poco más difíciles (y menos eficientes), ya que los Marshallers producen HttpEntities en lugar de Strings. Una `HttpEntity` contiene el resultado serializado, que es esencialmente un `Array[Byte]` y un `ContentType`. Así, por ejemplo, anteponer una cadena a la salida del `Marshaller` subyacente implicaría deserializar los bytes en una cadena, anteponer su prefijo y volver a serializar en una matriz de bytes.... no es bonito y bastante ineficiente. Sin embargo, puedes hacerlo. Sólo tienes que producir un `MarshallingContext` personalizado, que envuelve el original con lógica personalizada, y pasarlo al `Marshaller` interno. Sin embargo, una solución general también requeriría que pensaras en el manejo de respuestas fragmentadas, errores, etc.
+
+Dado que la segunda forma de envoltorio es menos atractiva, no existe una infraestructura de ayuda real para ella. En general, no queremos fomentar este tipo de diseño. (Con una excepción: Simplemente sobreescribiendo el Content-Type de otro `Marshaller` puede hacerse eficientemente. Esta es la razón por la que el `MarshallingContext` ya viene con un ayudante de copia `withContentTypeOverriding`).
+
+### ToResponseMarshaller
+
+El `marshaller[T]` es independiente de si se utiliza en el servidor o en el cliente. Esto significa que se puede utilizar para producir las entidades (y cabeceras adicionales) tanto para respuestas como para peticiones.
+
+A veces, sin embargo, esto no es suficiente. Si sabes que sólo necesitas marshalizar a instancias `HttpResponse` (por ejemplo, porque sólo utilizas spray en el lado del servidor) también puedes escribir un `ToResponseMarshaller[T]` para tu tipo. Este marshaller más especializado le permite producir la instancia `HttpResponse` completa en lugar de sólo su entidad. Como tal, el marshaller también puede establecer el código de estado de la respuesta (que no existe en el lado de la petición).
+
+Cuando se busca una forma de marshalizar un tipo personalizado `T` spray (o más bien el compilador de Scala) busca primero un `ToResponseMarshaller[T]` para el tipo. Sólo si no se encuentra ninguno se usará un `Marshaller[T]` dentro del ámbito.
+
+### Unmarshalling
+
+"Unmarshalling" es el proceso de convertir algún tipo de representación de nivel inferior, a menudo un "formato alámbrico", en una estructura de nivel superior (objeto). Otros nombres populares para ello son "Deserialización" o "Unpickling".
+
+En spray "Unmarshalling" significa la conversión de una `HttpEntity`, la clase modelo para el cuerpo de entidad de una petición o respuesta HTTP (dependiendo de si se utiliza en el lado del cliente o del servidor), en un objeto de tipo `T`.
+
+Unmarshalling para instancias de tipo `T` se realiza mediante un `Unmarshaller[T]`, que se define así:
+
+```scala
+type Unmarshaller[T] = Deserializer[HttpEntity, T]
+trait Deserializer[A, B] extends (A => Deserialized[B])
+type Deserialized[T] = Either[DeserializationError, T]
+```
+
+Así, un `Unmarshaller` es básicamente una función `HttpEntity => Either[DeserializationError, T]`. En comparación con sus homólogos, los Marshallers, los Unmarshallers son algo más sencillos, ya que son funciones directas y no tienen que lidiar con chunk streams (que actualmente no están soportados en unmarshalling) o ejecución retardada).
+
+### Default Unmarshallers
+
+spray-httpx viene con Unmarshallers predefinidos para los siguientes tipos:
+
+- Array[Byte]
+- Array[Char]
+- String
+- NodeSeq
+- Option[T]
+- spray.http.FormData
+- spray.http.HttpForm
+- spray.http.MultipartContent
+- spray.http.MultipartFormData
+
+Las fuentes pertinentes son:
+
+- Deserializer
+- BasicUnmarshallers
+- MetaUnmarshallers
+- FormDataUnmarshallers
+
+### Implicit Resolution Unmarshallers
+
+Dado que la infraestructura unmarshalling utiliza un enfoque basado en clases de tipos, las instancias `Unmarshaller` para un tipo `T` tienen que estar disponibles implícitamente. Los implícitos para todos los Unmarshallers por defecto definidos por spray-httpx se proporcionan a través del objeto compañero del rasgo `Deserializer` (ya que `Unmarshaller[T]` es sólo un alias para un `Deserializer[HttpEntity, T])`. Esto significa que siempre están disponibles y nunca necesitan ser importados explícitamente. Además, puedes simplemente "anularlos" introduciendo tu propia versión personalizada en el ámbito local.
+
+### Custom Unmarshallers
+
+spray-httpx le proporciona algunas herramientas para construir Unmarshallers para sus propios tipos. Una de ellas es el ayudante Unmarshaller.apply, que se define como tal:
+
+```scala
+def apply[T](unmarshalFrom: ContentTypeRange*)
+            (f: PartialFunction[HttpEntity, T]): Unmarshaller[T]
+```
+
+Con él se define, por ejemplo, el NodeSeqUnmarshaller por defecto:
+
+```scala
+implicit val NodeSeqUnmarshaller =
+  Unmarshaller[NodeSeq](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) {
+    case HttpEntity.NonEmpty(contentType, data) ⇒
+      XML.withSAXParser(createSAXParser())
+        .load(new InputStreamReader(new ByteArrayInputStream(data.toByteArray), contentType.charset.nioCharset))
+    case HttpEntity.Empty ⇒ NodeSeq.Empty
+  }
+```
+
+Como otro ejemplo, aquí hay una definición `Unmarshaller` para un tipo personalizado `Person`:
+
+```scala
+import spray.httpx.unmarshalling._
+import spray.util._
+import spray.http._
+
+val `application/vnd.acme.person` =
+  MediaTypes.register(MediaType.custom("application/vnd.acme.person"))
+
+case class Person(name: String, firstName: String, age: Int)
+
+object Person {
+  implicit val PersonUnmarshaller =
+    Unmarshaller[Person](`application/vnd.acme.person`) {
+      case HttpEntity.NonEmpty(contentType, data) =>
+        // unmarshal del formato de cadena utilizado en el ejemplo marshaller
+        val Array(_, name, first, age) =
+          data.asString.split(":,".toCharArray).map(_.trim)
+        Person(name, first, age.toInt)
+
+      // si tuviéramos una semántica significativa para la HttpEntity.Empty
+      // podríamos añadir un caso para HttpEntity.Empty:
+      // case HttpEntity.Empty => ...
+    }
+}
+
+val body = HttpEntity(`application/vnd.acme.person`, "Person: Bob, Parr, 32")
+body.as[Person] === Right(Person("Bob", "Parr", 32))
+```
+
+Como se puede ver en este ejemplo, lo mejor es definir el `Unmarshaller` para `T` en el objeto compañero de `T`. De esta manera su unmarshaller está siempre en el ámbito, sin ningún impuesto de importación.
+
+### Deriving Unmarshallers
+
+#### Desmarcador.delegado
+
+A veces puede ahorrarse algo de trabajo reutilizando los Unmarshallers existentes para sus Unmarshallers personalizados. La idea es "envolver" un `Unmarshaller` existente con algo de lógica para "reorientarlo" a su tipo.
+
+En este sentido, "envolver" a un `Unmarshaller` puede significar una o ambas de las dos cosas siguientes:
+
+- Transformar la `HttpEntity` de entrada antes de que llegue al Unmarshaller envuelto.
+- Transformar la salida del Unmarshaller envuelto
+
+Se pueden hacer ambas cosas, pero la infraestructura de soporte existente favorece la segunda sobre la primera. El ayudante Unmarshaller.delegate le permite convertir un `Unmarshaller[A]` en un `Unmarshaller[B]` proporcionando una función `A => B`:
+
+```scala
+def delegate[A, B](unmarshalFrom: ContentTypeRange*)
+                  (f: A => B)
+                  (implicit mb: Unmarshaller[A]): Unmarshaller[B]
+```
+
+Por ejemplo, utilizando Unmarshaller.delegate el Unmarshaller[Person] del ejemplo anterior podría simplificarse a esto:
+
+```scala
+implicit val SimplerPersonUnmarshaller =
+  Unmarshaller.delegate[String, Person](`application/vnd.acme.person`) { string =>
+    val Array(_, name, first, age) = string.split(":,".toCharArray).map(_.trim)
+    Person(name, first, age.toInt)
+  }
+```
+
+#### Unmarshaller.forNonEmpty
+
+Además de `Unmarshaller.delegate` también hay otro "constructor derivado de Unmarshaller" llamado `Unmarshaller.forNonEmpty`. Este "modifica" un Unmarshaller existente para que no acepte entidades vacías.
+
+Por ejemplo, el `NodeSeqMarshaller` por defecto (ver más arriba) acepta entidades vacías como una representación válida de `NodeSeq.Empty`. Sin embargo, puede que en el contexto de tu aplicación no se permitan entidades vacías. Para conseguir esto, en lugar de "sobreescribir" el `NodeSeqMarshaller` existente con una re-implementación totalmente personalizada podrías hacer esto:
+
+```scala
+implicit val myNodeSeqUnmarshaller = Unmarshaller.forNonEmpty[NodeSeq]
+
+HttpEntity(MediaTypes.`text/xml`, "<xml>yeah</xml>").as[NodeSeq] === Right(<xml>yeah</xml>)
+HttpEntity.Empty.as[NodeSeq] === Left(ContentExpected)
+```
+
+### More specific Unmarshallers
+
+El `Unmarshaller[T]` es independiente de si se utiliza en el servidor o en el cliente. Esto significa que puede ser utilizado para deserializar las entidades de las solicitudes, así como las respuestas. Además, la única información a la que un `Unmarshaller[T]` tiene acceso para su trabajo es la entidad del mensaje. A veces esto no es suficiente.
+
+#### FromMessageUnmarshaller
+
+Si necesitas acceder a las cabeceras de los mensajes durante el desmarcado puedes escribir un `FromMessageUnmarshaller[T]` para tu tipo. Se define como tal:
+
+```scala
+type FromMessageUnmarshaller[T] = Deserializer[HttpMessage, T]
+```
+
+y permite el acceso a todos los miembros de la superclase `HttpMessage` de los tipos `HttpRequest` y `HttpResponse`, lo más importante: las cabeceras de los mensajes. Dado que, al igual que el `Unmarshaller[T]`, puede deserializar tanto peticiones como respuestas, puede utilizarse tanto en el lado del servidor como en el del cliente.
+
+Un `FromMessageUnmarshaller[T]` dentro del ámbito tiene prioridad sobre cualquier `Unmarshaller[T]` plano potencialmente disponible.
+
+#### FromRequestUnmarshaller
+
+El `FromRequestUnmarshaller[T]` es el unmarshaller más "potente" que se puede utilizar en el lado del servidor (y sólo allí). Se define así:
+
+```scala
+type FromRequestUnmarshaller[T] = Deserializer[HttpRequest, T]
+```
+
+y permite el acceso a todos los miembros de la instancia `HttpRequest` entrante.
+
+Un `FromRequestUnmarshaller[T]` dentro del ámbito tiene prioridad sobre cualquier `FromMessageUnmarshaller[T]` o `Unmarshaller[T]` plano potencialmente disponible.
+
+#### FromResponseUnmarshaller
+
+El `FromResponseUnmarshaller[T]` es el unmarshaller más "potente" que se puede utilizar en el lado del cliente (y sólo allí). Se define así:
+
+```scala
+type FromResponseUnmarshaller[T] = Deserializer[HttpResponse, T]
+```
+
+y permite el acceso a todos los miembros de la instancia `HttpResponse` entrante.
+
+Un `FromResponseUnmarshaller[T]` dentro del ámbito tiene prioridad sobre cualquier `FromMessageUnmarshaller[T]` o `Unmarshaller[T]` plano potencialmente disponible.
+
+### json4s Support
+
+Por analogía con el soporte spray-json, spray-httpx también proporciona los rasgos Json4sSupport y Json4sJacksonSupport, que proporcionan automáticamente instancias implícitas `Marshaller` y `Unmarshaller` para todos los tipos si una instancia implícita `org.json4s.Formats` está en el ámbito.
+
+Al mezclar cualquiera de los dos rasgos tienes que implementar el miembro abstracto:
+
+```scala
+implicit def json4sFormats: Formats
+```
+
+con su lógica personalizada. Consulte la documentación de json4s para obtener más información sobre cómo hacerlo.
+
+-----
+Nota
+
+Dado que spray-httpx sólo viene con una dependencia opcional de json4s-native y json4s-jackson, tendrás que añadir cualquiera de ellos a tu proyecto. Consulte la documentación de json4s para obtener información sobre cómo hacerlo.
+
+-----
